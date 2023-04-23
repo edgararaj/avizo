@@ -69,7 +69,7 @@ playing_dev_id() {
 all_flag=false
 dev=
 dev_type='sink'
-use_playing=false
+use_playing=true
 opts=
 unmute_opt=
 optind=1
