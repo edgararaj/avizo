@@ -41,6 +41,7 @@ public class AvizoWindow : Gtk.Window
 	}
 
 	public double progress { get; set; }
+	public new bool destroyed { get; set; }
 
 	private int _width = 248;
 	public int width
@@ -115,6 +116,7 @@ public class AvizoWindow : Gtk.Window
 		remove_tick_callback(prev_callback_id);
 		is_fade_in = true;
 		prev_callback_id = add_tick_callback(animation_tick);
+		destroyed = false;
 		show();
 	}
 
@@ -151,21 +153,22 @@ public class AvizoWindow : Gtk.Window
 			}
 			opacity += animation_sec_elapsed/fade_in;
 			if (opacity > 1) opacity = 1;
-			print("Fade in: %f\n", opacity);
+			//print("Fade in: %f\n", opacity);
 			widget.set_opacity(opacity);
 		}
 		else
 		{
 			if (opacity <= 0)
 			{
-				hide();
+				destroy();
+				destroyed = true;
 				prev_frame_time = 0;
 				frame_clock.end_updating();
 				return false;
 			}
 			opacity -= animation_sec_elapsed/fade_out;
 			if (opacity < 0) opacity = 0;
-			print("Fade out: %f\n", opacity);
+			//print("Fade out: %f\n", opacity);
 			widget.set_opacity(opacity);
 		}
 
@@ -294,29 +297,21 @@ public class AvizoService : GLib.Object
 	public Gdk.RGBA bar_fg_color { get; set; default = rgba(0, 0, 0, 0.8); }
 	public Gdk.RGBA bar_bg_color { get; set; default = rgba(106, 106, 106, 0.8); }
 
-	private Array<AvizoWindow> _windows = new Array<AvizoWindow>();
+	private AvizoWindow window = null;
 	private int _open_timeouts = 0;
 
 	public void show(double seconds) throws DBusError, IOError
 	{
 		var display = Gdk.Display.get_default();
-		var monitors = display.get_n_monitors();
+		var monitor = display.get_primary_monitor();
 
-		if (_windows.length < monitors)
+		if (window == null || window.destroyed)
 		{
-			_windows.set_size(monitors);
+			window = create_window(display);
+			position_window(window, monitor);
 		}
-
-		for (int i = 0; i < monitors; i++)
-		{
-			var window = _windows.index(i);
-			if (window == null)
-			{
-				window = create_window(display);
-				_windows.insert_val(i, window);
-			}
-			show_window(window, display.get_monitor(i));
-		}
+		window.show_animated();
+		window.queue_draw();
 
 		_open_timeouts++;
 		Timeout.add((int) (seconds * 1000), () =>
@@ -325,9 +320,7 @@ public class AvizoService : GLib.Object
 
 			if (_open_timeouts == 0)
 			{
-				for (int i = 0; i < monitors; i++) {
-					_windows.index(i).hide_animated();
-				}
+				window.hide_animated();
 			}
 
 			return false;
@@ -355,11 +348,13 @@ public class AvizoService : GLib.Object
 		  GtkLayerShell.set_keyboard_interactivity(window, false);
 #endif
     }
+		window.set_accept_focus(false);
+		window.set_keep_above(true);
 
 		return window;
 	}
 
-	private void show_window(AvizoWindow window, Gdk.Monitor monitor)
+	private void position_window(AvizoWindow window, Gdk.Monitor monitor)
 	{
 		var margin = (int) Math.lround((monitor.workarea.height - height) * y_offset);
 
@@ -370,16 +365,12 @@ public class AvizoService : GLib.Object
 		}
 		else
 		{
-			int x, _y;
+			int x, y;
 			window.set_position(Gtk.WindowPosition.CENTER);
-			window.get_position(out x, out _y);
+			window.get_position(out x, out y);
 			window.move(x, margin);
 			window.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION);
-			window.set_accept_focus(false);
 		}
-
-		window.show_animated();
-		window.queue_draw();
 	}
 }
 
